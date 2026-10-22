@@ -18,6 +18,10 @@
 /*
  * Simple Utility functions common to several SH2 files.
  */
+#include <string.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include "bnoB_prefix.h" 
 
 #include "sh2_util.h"
 

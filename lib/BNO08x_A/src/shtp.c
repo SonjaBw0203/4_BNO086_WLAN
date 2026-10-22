@@ -19,6 +19,11 @@
  * Hillcrest Sensor Hub Transport Protocol (SHTP) API
  */
 
+#include <string.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include "bnoA_prefix.h"
+
 #include "shtp.h"
 #include "sh2_err.h"
 #include "sh2_util.h"

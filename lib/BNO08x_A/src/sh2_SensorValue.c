@@ -18,6 +18,10 @@
 /*
  * BNO080 Sensor Event decoding
  */
+#include <string.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include "bnoA_prefix.h"
 
 #include "sh2_SensorValue.h"
 #include "sh2_err.h"
