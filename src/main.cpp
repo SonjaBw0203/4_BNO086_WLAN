@@ -1,6 +1,5 @@
  // Zwei BNO085 ueber SPI auslesen, eine Zeile pro Messzeitpunkt (100 Hz):
-// t_us | ax1 ay1 az1 | gx1 gy1 gz1 | qr1 qi1 qj1 qk1 | ax2 ay2 az2 | gx2 gy2 gz2 | qr2 qi2 qj2 qk2
-
+// tA1 ax1 ay1 az1 | tG1 gx1 gy1 gz1 | tQ1 qr1 qi1 qj1 qk1 | tA2 ax2 ay2 az2 | tG2 gx2 gy2 gz2 | tQ2 qr2 qi2 qj2 qk2
 #include <Arduino.h>
 #include <BNO08x_A.h>
 #include <BNO08x_B.h>
@@ -22,6 +21,10 @@ sh2_SensorValue_t w;
 
 // Werte je Sensor, [0] = Sensor 1, [1] = Sensor 2
 float a[2][3], g[2][3], q[2][4] = {{1, 0, 0, 0}, {1, 0, 0, 0}};
+
+// Variable für die Zeitstempel der Sensoren, um die Zeitdifferenz zu berechnen
+unsigned long tA[2], tG[2], tQ[2]; // Zeitpunkte Beschleunigung, Drehrate/Gyroskop, Quaternion
+
 
 // für Sensor 1
 void reportsAn1() {
@@ -46,14 +49,19 @@ bool merke(int s) {
 switch (w.sensorId) {
     case SH2_GYROSCOPE_CALIBRATED:
       g[s][0] = w.un.gyroscope.x; g[s][1] = w.un.gyroscope.y; g[s][2] = w.un.gyroscope.z;
+      tG[s] = micros();
       break;
     case SH2_GAME_ROTATION_VECTOR:
       q[s][0] = w.un.gameRotationVector.real; q[s][1] = w.un.gameRotationVector.i;
       q[s][2] = w.un.gameRotationVector.j;    q[s][3] = w.un.gameRotationVector.k;
+
+      tQ[s] = micros();
       break;
     case SH2_LINEAR_ACCELERATION:
       a[s][0] = w.un.linearAcceleration.x; a[s][1] = w.un.linearAcceleration.y;
       a[s][2] = w.un.linearAcceleration.z;
+
+      tA[s] = micros();
         return true;    
   }
   return false;
@@ -89,12 +97,14 @@ void loop() {
 
     // gemeinsame Zeile, sobald Sensor 1 eine neue Beschleunigung liefert
   if (neueZeile) {
-    Serial.printf("%lu | %.4f %.4f %.4f | %.4f %.4f %.4f | %.4f %.4f %.4f %.4f"
-                  " | %.4f %.4f %.4f | %.4f %.4f %.4f | %.4f %.4f %.4f %.4f\n",
+    Serial.printf("%lu %.4f %.4f %.4f | %lu %.4f %.4f %.4f | %lu %.4f %.4f %.4f %.4f"
+                  " | %lu %.4f %.4f %.4f | %lu %.4f %.4f %.4f | %lu %.4f %.4f %.4f %.4f\n",
                   (unsigned long)micros(),
-                  a[0][0], a[0][1], a[0][2], g[0][0], g[0][1], g[0][2],
-                  q[0][0], q[0][1], q[0][2], q[0][3],
-                  a[1][0], a[1][1], a[1][2], g[1][0], g[1][1], g[1][2],
-                  q[1][0], q[1][1], q[1][2], q[1][3]);
+                  tA[0], a[0][0], a[0][1], a[0][2],
+                  tG[0], g[0][0], g[0][1], g[0][2],
+                  tQ[0], q[0][0], q[0][1], q[0][2], q[0][3],
+                  tA[1], a[1][0], a[1][1], a[1][2],
+                  tG[1], g[1][0], g[1][1], g[1][2],
+                  tQ[1], q[1][0], q[1][1], q[1][2], q[1][3]);
   }  
 }
