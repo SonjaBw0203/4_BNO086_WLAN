@@ -1,110 +1,87 @@
- // Zwei BNO085 ueber SPI auslesen, eine Zeile pro Messzeitpunkt (100 Hz):
-// tA1 ax1 ay1 az1 | tG1 gx1 gy1 gz1 | tQ1 qr1 qi1 qj1 qk1 | tA2 ax2 ay2 az2 | tG2 gx2 gy2 gz2 | tQ2 qr2 qi2 qj2 qk2
+// Zwei BNO085 ueber SPI, Ausgabe per WLAN und USB
+// Zeile (26 Werte): tA1 a1 | tG1 g1 | tQ1 q1 | tA2 a2 | tG2 g2 | tQ2 q2
 #include <Arduino.h>
 #include <BNO08x_A.h>
 #include <BNO08x_B.h>
+#include <WiFi.h>
 
+#define CS_1 10
+#define INT_1 14
+#define CS_2 9
+#define INT_2 16
 
-// Pins für beide Sensoren
-// Sensor 1: CS 10, INT 14, RST 15   |   Sensor 2: CS 9, INT 16, RST 17
-#define CS_1    10
-#define INT_1   14
-#define RST_1   15
-#define CS_2     9
-#define INT_2   16
-#define RST_2   17
-
-//zwei Objekte für die beiden Sensoren
-BNO08x_A          bno1(RST_1);   
-BNO08x_B          bno2(RST_2);
+BNO08x_A bno1(15);   // RST_1
+BNO08x_B bno2(17);   // RST_2
 sh2_SensorValue_t w;
+float a[2][3], g[2][3], q[2][4];
+unsigned long tA[2], tG[2], tQ[2];
 
-// Werte je Sensor, [0] = Sensor 1, [1] = Sensor 2
-float a[2][3], g[2][3], q[2][4] = {{1, 0, 0, 0}, {1, 0, 0, 0}};
-
-// Variable für die Zeitstempel der Sensoren, um die Zeitdifferenz zu berechnen
-unsigned long tA[2], tG[2], tQ[2]; // Zeitpunkte Beschleunigung, Drehrate/Gyroskop, Quaternion
+WiFiServer server(5000);
+WiFiClient client;
 
 
-// für Sensor 1
-void reportsAn1() {
-  bno1.enableReport(SH2_LINEAR_ACCELERATION, 10000);    // 100 Hz
-  delay(100);
-  bno1.enableReport(SH2_GYROSCOPE_CALIBRATED, 10000);
-  delay(100);
-  bno1.enableReport(SH2_GAME_ROTATION_VECTOR, 10000);
+template <class B> void reportsAn(B &b) {
+  b.enableReport(SH2_LINEAR_ACCELERATION, 10000);  delay(100);
+  b.enableReport(SH2_GYROSCOPE_CALIBRATED, 10000); delay(100);
+  b.enableReport(SH2_GAME_ROTATION_VECTOR, 10000);
 }
 
-// für Sensor 2
-void reportsAn2() {
-  bno2.enableReport(SH2_LINEAR_ACCELERATION, 10000);    // 100 Hz
-  delay(100);
-  bno2.enableReport(SH2_GYROSCOPE_CALIBRATED, 10000);
-  delay(100);
-  bno2.enableReport(SH2_GAME_ROTATION_VECTOR, 10000);
-}
-
-// switch gibt true zurück, wenn eine neue Beschleunigung kam 
+// Wert von Sensor s speichern; true bei neuer Beschleunigung
 bool merke(int s) {
-switch (w.sensorId) {
+  unsigned long t = micros();
+  auto &u = w.un;
+  switch (w.sensorId) {
+    case SH2_LINEAR_ACCELERATION:
+      tA[s] = t; a[s][0] = u.linearAcceleration.x; a[s][1] = u.linearAcceleration.y; a[s][2] = u.linearAcceleration.z;
+      return true;
     case SH2_GYROSCOPE_CALIBRATED:
-      g[s][0] = w.un.gyroscope.x; g[s][1] = w.un.gyroscope.y; g[s][2] = w.un.gyroscope.z;
-      tG[s] = micros();
+      tG[s] = t; g[s][0] = u.gyroscope.x; g[s][1] = u.gyroscope.y; g[s][2] = u.gyroscope.z;
       break;
     case SH2_GAME_ROTATION_VECTOR:
-      q[s][0] = w.un.gameRotationVector.real; q[s][1] = w.un.gameRotationVector.i;
-      q[s][2] = w.un.gameRotationVector.j;    q[s][3] = w.un.gameRotationVector.k;
-
-      tQ[s] = micros();
+      tQ[s] = t; q[s][0] = u.gameRotationVector.real; q[s][1] = u.gameRotationVector.i;
+      q[s][2] = u.gameRotationVector.j; q[s][3] = u.gameRotationVector.k;
       break;
-    case SH2_LINEAR_ACCELERATION:
-      a[s][0] = w.un.linearAcceleration.x; a[s][1] = w.un.linearAcceleration.y;
-      a[s][2] = w.un.linearAcceleration.z;
-
-      tA[s] = micros();
-        return true;    
   }
   return false;
 }
 
 void setup() {
+  WiFi.softAP("ESP32S3_BNO", "12345678"); //Passwort
+  server.begin();
+
   Serial.begin(921600);
-  pinMode(CS_2, OUTPUT);  digitalWrite(CS_2, HIGH);    // CS Sensor 2 inaktiv
-  pinMode(CS_1, OUTPUT); digitalWrite(CS_1, HIGH);   // CS Sensor 1 inaktiv
+  pinMode(CS_1, OUTPUT); digitalWrite(CS_1, HIGH);
+  pinMode(CS_2, OUTPUT); digitalWrite(CS_2, HIGH);
   delay(2000);
-    if (!bno1.begin_SPI(CS_1, INT_1)) {
-    Serial.println("Sensor 1 nicht gefunden");
-    while (true) delay(1000);
+  if (!bno1.begin_SPI(CS_1, INT_1) || !bno2.begin_SPI(CS_2, INT_2)) {
+    Serial.println("Sensor nicht gefunden"); while (true) delay(1000);
   }
-  if (!bno2.begin_SPI(CS_2, INT_2)) {                // NEU
-    Serial.println("Sensor 2 nicht gefunden");
-    while (true) delay(1000);
-  }
-  Serial.println("Beide BNO085 bereit");
-  reportsAn1();
-  reportsAn2();
+  reportsAn(bno1); reportsAn(bno2);
+
 }
 
 void loop() {
-  if (bno1.wasReset()) reportsAn1();
-  if (bno2.wasReset()) reportsAn2();
+  if (!client.connected()) 
+  { client = server.available(); 
+  if (client) client.setNoDelay(true); }
+  if (bno1.wasReset()) reportsAn(bno1);
+  if (bno2.wasReset()) reportsAn(bno2);
 
-  // Sensor nur abfragen, wenn sein INT-Pin LOW ist (=neue Daten)
-  // Sonst wartet die Bibliothek bis zu 500 ms und blockiert den anderen Sensor
-  bool neueZeile = false;
-  if (digitalRead(INT_1) == LOW && bno1.getSensorEvent(&w)) neueZeile = merke(0);
-  if (digitalRead(INT_2) == LOW && bno2.getSensorEvent(&w)) merke(1); 
+  bool neu = false;
+  if (digitalRead(INT_1) == LOW && bno1.getSensorEvent(&w)) neu = merke(0);
+  if (digitalRead(INT_2) == LOW && bno2.getSensorEvent(&w)) merke(1);
+  if (!neu) return;
 
-    // gemeinsame Zeile, sobald Sensor 1 eine neue Beschleunigung liefert
-  if (neueZeile) {
-    Serial.printf("%lu %.4f %.4f %.4f | %lu %.4f %.4f %.4f | %lu %.4f %.4f %.4f %.4f"
-                  " | %lu %.4f %.4f %.4f | %lu %.4f %.4f %.4f | %lu %.4f %.4f %.4f %.4f\n",
-                  (unsigned long)micros(),
-                  tA[0], a[0][0], a[0][1], a[0][2],
-                  tG[0], g[0][0], g[0][1], g[0][2],
-                  tQ[0], q[0][0], q[0][1], q[0][2], q[0][3],
-                  tA[1], a[1][0], a[1][1], a[1][2],
-                  tG[1], g[1][0], g[1][1], g[1][2],
-                  tQ[1], q[1][0], q[1][1], q[1][2], q[1][3]);
-  }  
+  char z[256];
+  int n = 0;
+  for (int s = 0; s < 2; s++)
+    n += snprintf(z + n, sizeof(z) - n, "%s%lu %.4f %.4f %.4f | %lu %.4f %.4f %.4f | %lu %.4f %.4f %.4f %.4f",
+                  s ? " | " : "", tA[s], a[s][0], a[s][1], a[s][2], tG[s], g[s][0], g[s][1], g[s][2],
+                  tQ[s], q[s][0], q[s][1], q[s][2], q[s][3]);
+  z[n++] = '\n';
+
+  Serial.write(z, n);
+ 
+
+    if (client.connected()) client.write(z, n);
 }
