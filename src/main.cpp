@@ -1,32 +1,40 @@
 // Zwei BNO085 ueber SPI, Ausgabe per WLAN und USB
 // Zeile (26 Werte): tA1 a1 | tG1 g1 | tQ1 q1 | tA2 a2 | tG2 g2 | tQ2 q2
 #include <Arduino.h>
-#include <BNO08x_A.h>
-#include <BNO08x_B.h>
+#include <BNO08x_A.h> // Treiber-Kopie für Sensor 1
+#include <BNO08x_B.h> // Treiber-Kopie für Sensor 2
 #include <WiFi.h>
 
+// Pinbelegung: Chip-Select und Interrupt-Leitung je Sensor
 #define CS_1 10
 #define INT_1 14
 #define CS_2 9
 #define INT_2 16
 
-BNO08x_A bno1(15);   // RST_1
-BNO08x_B bno2(17);   // RST_2
-sh2_SensorValue_t w;
-float a[2][3], g[2][3], q[2][4];
-unsigned long tA[2], tG[2], tQ[2];
+BNO08x_A bno1(15);   // Reset-Pin 15 
+BNO08x_B bno2(-1);   // kein eigener RST, wird ueber bno1 mit zurueckgesetzt
 
-WiFiServer server(5000);
-WiFiClient client;
+sh2_SensorValue_t w;  // Zwischenpuffer für ein empfangenes Sensor-Event 
+float a[2][3], g[2][3], q[2][4]; //a=Beschl., g=Gyro, q=Quaternion, letzte Messwerte je Sensor speichern [Sensor][Achse]
+unsigned long tA[2], tG[2], tQ[2];  // Zeitstempel der letzten Werte je Sensor speichern [Sensor]
 
+WiFiServer server(5000);  // TCP-Server auf Port 5000 
+WiFiClient client;        // aktuell verbundenen PC-Client 
 
+// aktivieren der drei benötigten Reports eines Sensors
+// Intervall 1000 mikro Sekunden = 100 Hz
+// Delays geben dem Sensor Zeit, jeden Befehl zu verarbeiten.
 template <class B> void reportsAn(B &b) {
   b.enableReport(SH2_LINEAR_ACCELERATION, 10000);  delay(100);
   b.enableReport(SH2_GYROSCOPE_CALIBRATED, 10000); delay(100);
   b.enableReport(SH2_GAME_ROTATION_VECTOR, 10000);
 }
 
-// Wert von Sensor s speichern; true bei neuer Beschleunigung
+// Sortieren den empfangenen Datenpakets (w) an die richtige Stelle:
+// w.sensorId gibt an, um welchen Sensorwert es sich handelt (Beschl., Gyro, Quaternion)
+// dann in a, g oder q speichern, Zeitstempel in tA, tG oder tQ
+// s gibt an , von welchem Sensor die Daten stammen (0 = bno1 oder 1 = bno2)
+// Rückgabe true nur bei neuer Beschleunigung -> löst eine Ausgabezeile aus
 bool merke(int s) {
   unsigned long t = micros();
   auto &u = w.un;
@@ -46,13 +54,18 @@ bool merke(int s) {
 }
 
 void setup() {
+  // ESP32 spannt sein eigenes WLAN auf, der PC verbindet sich damit und kann die Daten empfangen
   WiFi.softAP("ESP32S3_BNO", "12345678"); //Passwort
   server.begin();
 
-  Serial.begin(921600);
+  Serial.begin(921600); // für USB hohe Baudrate, damit 100 Hz Zeilen sicher durchpassen
+  
+  // Beide CS-Leitungen inaktiv (HIGH), damit sich die Sensoren beim STart nicht gegenseitig stören
   pinMode(CS_1, OUTPUT); digitalWrite(CS_1, HIGH);
   pinMode(CS_2, OUTPUT); digitalWrite(CS_2, HIGH);
   delay(2000);
+
+  // Beide Sensoren über SPI initialisieren, falls einer nicht gefunden wird, Programm anhalten
   if (!bno1.begin_SPI(CS_1, INT_1) || !bno2.begin_SPI(CS_2, INT_2)) {
     Serial.println("Sensor nicht gefunden"); while (true) delay(1000);
   }
@@ -61,27 +74,32 @@ void setup() {
 }
 
 void loop() {
+  // neuen Client annehmen, falls noch keiner verbunden ist
   if (!client.connected()) 
   { client = server.available(); 
   if (client) client.setNoDelay(true); }
+
+  // Nach einem Sensor Reset sind alle Reports aus -> neu aktivieren 
   if (bno1.wasReset()) reportsAn(bno1);
   if (bno2.wasReset()) reportsAn(bno2);
 
+  // INT = LOW bedeutet, dass ein Sensor neue Daten hat -> diese abholen und merken
   bool neu = false;
   if (digitalRead(INT_1) == LOW && bno1.getSensorEvent(&w)) neu = merke(0);
   if (digitalRead(INT_2) == LOW && bno2.getSensorEvent(&w)) merke(1);
   if (!neu) return;
 
+  // Ausgabenzeile zusammenbauen: für jeden Sensor die jeweils letzten Werten
+  // n zählt die bisher geschriebenen Zeichen 
   char z[256];
   int n = 0;
   for (int s = 0; s < 2; s++)
     n += snprintf(z + n, sizeof(z) - n, "%s%lu %.4f %.4f %.4f | %lu %.4f %.4f %.4f | %lu %.4f %.4f %.4f %.4f",
                   s ? " | " : "", tA[s], a[s][0], a[s][1], a[s][2], tG[s], g[s][0], g[s][1], g[s][2],
                   tQ[s], q[s][0], q[s][1], q[s][2], q[s][3]);
-  z[n++] = '\n';
+  z[n++] = '\n';  // zeilenende
 
-  Serial.write(z, n);
+  Serial.write(z, n);   // Ausgabe über USB
  
-
-    if (client.connected()) client.write(z, n);
+    if (client.connected()) client.write(z, n); // Ausgabe über WLAN, falls Client da 
 }

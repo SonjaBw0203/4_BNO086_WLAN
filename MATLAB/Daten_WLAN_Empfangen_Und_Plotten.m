@@ -12,15 +12,106 @@ fid = fopen("WLAN_" + string(datetime('now', 'Format', 'yyyy-MM-dd_HH-mm-ss')) +
 %Fenster zum Anzeigen dass Messung läuft und zum Beenden der Messung
 f   = figure('Name', 'WLAN-Aufnahme laeuft - Fenster schliessen zum Beenden');
 
+
+% zwei Linien im Fenster f, blau = BNO01, rot = BNO2, werden Punkt für
+% Punkt verlaengert
+h =[animatedline('Color','b'), animatedline('Color','r')];
+
+% Gitter, gleiche Skalierung von x und y, Achsenbeschriftung, Legende
+grid on; axis equal, xlabel('x in m'); ylabel('y in m'); legend('BNO1','BNO2');
+
+% Spalte des Zeitstempels tA je Sensor in einer Zeile (BNO1: Spalte 1, BNO2: Spalte 14), direkt danach folgen ax und ay
+sp = [1 14];
+
+% letzter Zeitstempel je Sensor, NaN = noch kein Wert empfangen
+tL = nan(1,2);
+
+% letzte Beschleunigung, Geschwindigkeit, Position je Sensor (Zeile 1 = BNO1, Zeile 2 = BNO2; Spalte 1 = x, Spalte 2 = y), Start bei 0
+aL = zeros(2);
+v = zeros(2);
+p = zeros(2);
+
+% Zwischenspeicher für eine noch unvollständig angekommende Zeile
+puffer = "";
+
+
 % Schleife, die so lange läuft wie das Fenster f existiert
 while ishandle(f)
 
     % Prüft, ob seit dem letzten Durchlauf neue Bytes vom ESP angekommen
     if s.NumBytesAvailable > 0
+        
+        % alle vorhandenen Bytes aus dem Empfangspuffer holen und in b
+        % merken (werden zweimal gebraucht)
+        b = read(s, s.NumBytesAvailable, "uint8");
 
-        % read holt alle vorhandenen Bytes aus dem Empfangspuffer, fwrite
         % schreibt Daten unverändert in die Datei
-        fwrite(fid, read(s, s.NumBytesAvailable, "uint8"));
+        fwrite(fid,b);
+        
+        % Bytes in Text unwandeln und an den Rest vom letzten Durchlauf
+        % anhängen
+        puffer = puffer + char(b(:)');
+
+        % Text an den Zeilenumbrüchen in einzelne Zeilen aufteilen
+        z = split(puffer, newline);
+
+        % letzte Zeile kann unvollständig sein -> für den nächsten
+        % Durchlauf aufheben
+        puffer = z(end);
+
+        % alle vollständigen Zeilen nacheinander bearbeiten
+        for zeile = z(1:end-1)'
+            
+            %Trennstriche durch Leerzeichen ersetzen und alle Zahlen der
+            %Zeile einlesen
+            w = sscanf(replace(zeile, "|", " "), '%f');
+
+            % fehlerhafte Zeile (nicht genau 26 Werte) ueberspringen
+            if numel(w) ~= 26, continue; end
+
+            % Sensor 1 und Sensor 2 nacheinander bearbeiten
+            for k = 1:2
+
+                %Zeitstempel des Sensors von Mikrosekunden in Sekunden
+                %umrechnen (damit es zur Einheit der Beschleunigung passt)
+                t = w(sp(k))/1e6;
+
+                % Beschleunigung [ax ay] des Sensors aus der Zeile holen
+                a = w(sp(k) + (1:2))';
+
+                % Zeit seit dem letzten Messwert dieses Sensors
+                dt = t - tL(k);
+
+                % nur integrierem, wenn es ein neuer Messwert ist (dt = 0:
+                % Wert wiederholt, dt = NANA: erster Wert)
+                if dt>0
+
+                    % Trapezregel a -> v: 
+                    % neue Geschwindigkeit = alte + dt* Mittelwert
+                    % aus alter und neuer Beschleunigung
+                    vNeu = v(k,:) + dt * (aL(k,:)+a)/2;
+
+                    % Trapezregel v -> x: 
+                    % neue Position = alte + dt *Mittelwert
+                    % aus alter und neuer Geschwindigkeit
+                    p(k,:) = p(k,:) + dt * (v(k,:) + vNeu)/2;
+
+                    % neue Geschwindigkeit für den nächsten Schritt merken
+                    v(k,:) = vNeu;
+
+                    % neuen Punkt an die Trajektorie dieses Sensors
+                    % anhängen
+                    addpoints(h(k), p(k,1), p(k,2));
+
+                end
+
+                % bei neuem oder erstem Wert Zeit und Beschleunigung für
+                % den nächsten Schritt merken
+                if isnan(dt) || dt > 0, tL(k) = t; aL(k,:) = a; end
+            end
+
+        end
+
     end
 
     %MATLAB kurz Zeit geben um Ereignisse zu verarbeiten -> z.B Schließen
