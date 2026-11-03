@@ -20,7 +20,8 @@ h =[animatedline('Color','b'), animatedline('Color','r')];
 % Gitter, gleiche Skalierung von x und y, Achsenbeschriftung, Legende
 grid on; axis equal, xlabel('x in m'); ylabel('y in m'); legend('BNO1','BNO2');
 
-% Spalte des Zeitstempels tA je Sensor in einer Zeile (BNO1: Spalte 1, BNO2: Spalte 14), direkt danach folgen ax und ay
+% Spalte des Zeitstempels tA je Sensor in einer Zeile (BNO1: Spalte 1,
+% BNO2: Spalte 14), direkt danach folgen ax, ay und az
 sp = [1 14];
 
 % letzter Zeitstempel je Sensor, NaN = noch kein Wert empfangen
@@ -76,9 +77,27 @@ while ishandle(f)
                 %umrechnen (damit es zur Einheit der Beschleunigung passt)
                 t = w(sp(k))/1e6;
 
-                % Beschleunigung [ax ay] des Sensors aus der Zeile holen
-                a = w(sp(k) + (1:2))';
+                % Beschleunigung [ax, ay, az] als Spaltenvektor holen
+                aSensor = w(sp(k) + (1:3));
 
+                % Quaternion des Sensor holen (Realteil zuerst)
+                qw = w(sp(k)+9); qx = w(sp(k)+10); qy = w(sp(k)+11); qz = w(sp(k)+12);
+
+                % dreht einen Vektor vom Sensor-System ins Welt-System
+                R = [1-2*(qy^2+qz^2),  2*(qx*qy-qw*qz),  2*(qx*qz+qw*qy);
+                     2*(qx*qy+qw*qz),  1-2*(qx^2+qz^2),  2*(qy*qz-qw*qx);
+                     2*(qx*qz-qw*qy),  2*(qy*qz+qw*qx),  1-2*(qx^2+qy^2)];
+
+                % Beschleunigung ins Welt-System drehen
+                % Welt-z zeigt nach oben, Welt -x/y liegen horizontal
+                aWelt = R * aSensor;
+
+                % nur die horizontalen Anteile [ax ay] als Zeilenvektor
+                % weiterverwenden 
+                % z Komponente wurde nur für die Drehung ins Weltsystem
+                % gebraucht, wird für 2D Darstellung verworfen
+                a =aWelt(1:2)';
+                
                 % Zeit seit dem letzten Messwert dieses Sensors
                 dt = t - tL(k);
 
@@ -102,7 +121,6 @@ while ishandle(f)
                     % neuen Punkt an die Trajektorie dieses Sensors
                     % anhängen
                     addpoints(h(k), p(k,1), p(k,2));
-
                 end
 
                 % bei neuem oder erstem Wert Zeit und Beschleunigung für
