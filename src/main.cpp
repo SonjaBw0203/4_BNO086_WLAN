@@ -7,13 +7,12 @@
 
 // Pinbelegung: Chip-Select und Interrupt-Leitung je Sensor
 #define CS_1 10
-#define INT_1 14
-#define CS_2 8
-#define INT_2 17
+#define INT_1 1
+#define CS_2 42
+#define INT_2 21
 
-BNO08x_A bno1(18);   // Reset-Pin 15 
-// BNO08x_B bno2(-1);   // kein eigener RST, wird ueber bno1 mit zurueckgesetzt
-BNO08x_B bno2(15);
+BNO08x_A bno1(2);   // RST Sensor 1
+BNO08x_B bno2(47);  // RST Sensor 2
 
 sh2_SensorValue_t w;  // Zwischenpuffer für ein empfangenes Sensor-Event 
 float a[2][3], g[2][3], q[2][4]; //a=Beschl., g=Gyro, q=Quaternion, letzte Messwerte je Sensor speichern [Sensor][Achse]
@@ -67,23 +66,16 @@ void setup() {
   delay(2000);
 
   // Beide Sensoren über SPI initialisieren, falls einer nicht gefunden wird, Programm anhalten
-  if (!bno1.begin_SPI(CS_1, INT_1)) { while (true) { Serial.println("Sensor 1 nicht gefunden"); delay(1000); } }
-  Serial.println("Sensor 1 ok");
-  pinMode(INT_2, INPUT_PULLUP);
-  Serial.print("INT_2 = "); Serial.println(digitalRead(INT_2));
+  if (!bno1.begin_SPI(CS_1, INT_1)) 
+    { 
+      Serial.println("Sensor 1 nicht gefunden"); 
+    }
 
   if (!bno2.begin_SPI(CS_2, INT_2)) 
-  {
+    {
     Serial.println("Sensor 2 nicht gefunden");
-    while (true) { Serial.println("Sensor 2 nicht gefunden"); delay(1000); } 
+    } 
   }
-
-  // { while (true) { Serial.println("Sensor 2 nicht gefunden"); delay(1000); } }
-  Serial.println("Sensor 2 ok");
-  reportsAn(bno1); reportsAn(bno2);
-  Serial.println("end setup");
-
-}
 
 void loop() {
   // neuen Client annehmen, falls noch keiner verbunden ist
