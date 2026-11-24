@@ -3,6 +3,8 @@
 #include <Arduino.h>
 #include <BNO08x_A.h> // Treiber-Kopie für Sensor 1
 #include <BNO08x_B.h> // Treiber-Kopie für Sensor 2
+#include <BNO08x_C.h> // Treiber-Kopie für Sensor 2
+#include <BNO08x_D.h> // Treiber-Kopie für Sensor 2
 #include <WiFi.h>
 
 // Pinbelegung: Chip-Select und Interrupt-Leitung je Sensor

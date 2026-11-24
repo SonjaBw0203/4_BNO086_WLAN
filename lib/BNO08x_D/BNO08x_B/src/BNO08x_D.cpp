@@ -1,5 +1,5 @@
 /*!
- *  @file BNO08x_B.cpp
+ *  @file BNO08x_D.cpp
  *
  *  @mainpage Adafruit BNO08x 9-DOF Orientation IMU Fusion Breakout
  *
@@ -39,12 +39,12 @@
 #include <Adafruit_I2CDevice.h>
 #include <Adafruit_SPIDevice.h>
 #include <Adafruit_Sensor.h>
-#include "bnoB_prefix.h"
+#include "bnoC_prefix.h"
 
 #include "Arduino.h"
 #include <Wire.h>
 
-#include "BNO08x_B.h"
+#include "BNO08x_D.h"
 
 static Adafruit_SPIDevice *spi_dev = NULL; ///< Pointer to SPI bus interface
 static int8_t _int_pin, _reset_pin;
@@ -89,13 +89,13 @@ static void hal_hardwareReset(void);
  *
  * @param reset_pin The arduino pin # connected to the BNO Reset pin
  */
-BNO08x_B::BNO08x_B(int8_t reset_pin) { _reset_pin = reset_pin; }
+BNO08x_D::BNO08x_D(int8_t reset_pin) { _reset_pin = reset_pin; }
 
 /**
- * @brief Destroy the BNO08x_B::BNO08x_B object
+ * @brief Destroy the BNO08x_D::BNO08x_D object
  *
  */
-BNO08x_B::~BNO08x_B(void) {
+BNO08x_D::~BNO08x_D(void) {
   // if (temp_sensor)
   //   delete temp_sensor;
 }
@@ -110,7 +110,7 @@ BNO08x_B::~BNO08x_B(void) {
  *            The unique ID to differentiate the sensors from others
  *    @return True if initialization was successful, otherwise false.
  */
-bool BNO08x_B::begin_I2C(uint8_t i2c_address, TwoWire *wire,
+bool BNO08x_D::begin_I2C(uint8_t i2c_address, TwoWire *wire,
                                 int32_t sensor_id) {
   if (i2c_dev) {
     delete i2c_dev; // remove old interface
@@ -140,7 +140,7 @@ bool BNO08x_B::begin_I2C(uint8_t i2c_address, TwoWire *wire,
  *            The user-defined ID to differentiate different sensors
  * @return  true if initialization was successful, otherwise false.
  */
-bool BNO08x_B::begin_UART(HardwareSerial *serial, int32_t sensor_id) {
+bool BNO08x_D::begin_UART(HardwareSerial *serial, int32_t sensor_id) {
   uart_dev = serial;
 
   _HAL.open = uarthal_open;
@@ -161,7 +161,7 @@ bool BNO08x_B::begin_UART(HardwareSerial *serial, int32_t sensor_id) {
  *            The user-defined ID to differentiate different sensors
  *    @return true if initialization was successful, otherwise false.
  */
-bool BNO08x_B::begin_SPI(uint8_t cs_pin, uint8_t int_pin,
+bool BNO08x_D::begin_SPI(uint8_t cs_pin, uint8_t int_pin,
                                 SPIClass *theSPI, int32_t sensor_id) {
   i2c_dev = NULL;
 
@@ -193,7 +193,7 @@ bool BNO08x_B::begin_SPI(uint8_t cs_pin, uint8_t int_pin,
  *   @param sensor_id Optional unique ID for the sensor set
  *   @returns True if chip identified and initialized
  */
-bool BNO08x_B::_init(int32_t sensor_id) {
+bool BNO08x_D::_init(int32_t sensor_id) {
   int status;
 
   hardwareReset();
@@ -221,14 +221,14 @@ bool BNO08x_B::_init(int32_t sensor_id) {
  * @brief Reset the device using the Reset pin
  *
  */
-void BNO08x_B::hardwareReset(void) { hal_hardwareReset(); }
+void BNO08x_D::hardwareReset(void) { hal_hardwareReset(); }
 
 /**
  * @brief Check if a reset has occured
  *
  * @return true: a reset has occured false: no reset has occoured
  */
-bool BNO08x_B::wasReset(void) {
+bool BNO08x_D::wasReset(void) {
   bool x = _reset_occurred;
   _reset_occurred = false;
 
@@ -242,7 +242,7 @@ bool BNO08x_B::wasReset(void) {
  * @return true: The report object was filled with a new report
  * @return false: No new report available to fill
  */
-bool BNO08x_B::getSensorEvent(sh2_SensorValue_t *value) {
+bool BNO08x_D::getSensorEvent(sh2_SensorValue_t *value) {
   _sensor_value = value;
 
   value->timestamp = 0;
@@ -265,7 +265,7 @@ bool BNO08x_B::getSensorEvent(sh2_SensorValue_t *value) {
  * microseconds
  * @return true: success false: failure
  */
-bool BNO08x_B::enableReport(sh2_SensorId_t sensorId,
+bool BNO08x_D::enableReport(sh2_SensorId_t sensorId,
                                    uint32_t interval_us) {
   static sh2_SensorConfig_t config;
 

@@ -1,5 +1,5 @@
 /*!
- *  @file BNO08x_B.h
+ *  @file BNO08x_D.h
  *
  * 	I2C Driver for the Adafruit BNO08x 9-DOF Orientation IMU Fusion Breakout
  *
@@ -14,8 +14,8 @@
  *	BSD license (see license.txt)
  */
 
-#ifndef _BNO08x_B_H
-#define _BNO08x_B_H
+#ifndef _BNO08x_D_H
+#define _BNO08x_D_H
 
 #include "Arduino.h"
 #include "sh2.h"
@@ -37,10 +37,10 @@
  *    @brief  Class that stores state and functions for interacting with
  *            the BNO08x 9-DOF Orientation IMU Fusion Breakout
  */
-class BNO08x_B {
+class BNO08x_D {
 public:
-  BNO08x_B(int8_t reset_pin = -1);
-  ~BNO08x_B();
+  BNO08x_D(int8_t reset_pin = -1);
+  ~BNO08x_D();
 
   bool begin_I2C(uint8_t i2c_addr = BNO08x_I2CADDR_DEFAULT,
                  TwoWire *wire = &Wire, int32_t sensor_id = 0);
