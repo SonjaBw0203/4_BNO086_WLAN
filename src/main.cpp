@@ -23,8 +23,8 @@ BNO08x_C bno3(40);  // RST Sensor 3
 BNO08x_D bno4(6);  // RST Sensor 4    
 
 sh2_SensorValue_t w;  // Zwischenpuffer für ein empfangenes Sensor-Event 
-float a[2][3], g[2][3], q[2][4]; //a=Beschl., g=Gyro, q=Quaternion, letzte Messwerte je Sensor speichern [Sensor][Achse]
-unsigned long tA[2], tG[2], tQ[2];  // Zeitstempel der letzten Werte je Sensor speichern [Sensor]
+float a[4][3], g[4][3], q[4][4]; //a=Beschl., g=Gyro, q=Quaternion, letzte Messwerte je Sensor speichern [Sensor][Achse]
+unsigned long tA[4], tG[4], tQ[4];  // Zeitstempel der letzten Werte je Sensor speichern [Sensor]
 
 WiFiServer server(5000);  // TCP-Server auf Port 5000 
 WiFiClient client;        // aktuell verbundenen PC-Client 
@@ -85,6 +85,18 @@ void setup() {
     {
     Serial.println("Sensor 2 nicht gefunden");
     } 
+
+  if (!bno3.begin_SPI(CS_3, INT_3)) 
+    { 
+      Serial.println("Sensor 3 nicht gefunden"); 
+    }
+    
+  if (!bno4.begin_SPI(CS_4, INT_4)) 
+    { 
+      Serial.println("Sensor 4 nicht gefunden"); 
+    }
+
+    reportsAn(bno1); reportsAn(bno2); reportsAn(bno3); reportsAn(bno4);
   }
 
 void loop() {
@@ -96,18 +108,23 @@ void loop() {
   // Nach einem Sensor Reset sind alle Reports aus -> neu aktivieren 
   if (bno1.wasReset()) reportsAn(bno1);
   if (bno2.wasReset()) reportsAn(bno2);
+  if (bno3.wasReset()) reportsAn(bno3);
+  if (bno4.wasReset()) reportsAn(bno4);
+
 
   // INT = LOW bedeutet, dass ein Sensor neue Daten hat -> diese abholen und merken
   bool neu = false;
   if (digitalRead(INT_1) == LOW && bno1.getSensorEvent(&w)) neu = merke(0);
   if (digitalRead(INT_2) == LOW && bno2.getSensorEvent(&w)) merke(1);
+  if (digitalRead(INT_3) == LOW && bno3.getSensorEvent(&w)) merke(2);
+  if (digitalRead(INT_4) == LOW && bno4.getSensorEvent(&w)) merke(3);
   if (!neu) return;
 
   // Ausgabenzeile zusammenbauen: für jeden Sensor die jeweils letzten Werten
   // n zählt die bisher geschriebenen Zeichen 
-  char z[256];
+  char z[512];  // Ausgabepuffer, 512 Zeichen reichen für 4 Sensoren
   int n = 0;
-  for (int s = 0; s < 2; s++)
+  for (int s = 0; s < 4; s++)
     n += snprintf(z + n, sizeof(z) - n, "%s%lu %.4f %.4f %.4f | %lu %.4f %.4f %.4f | %lu %.4f %.4f %.4f %.4f",
                   s ? " | " : "", tA[s], a[s][0], a[s][1], a[s][2], tG[s], g[s][0], g[s][1], g[s][2],
                   tQ[s], q[s][0], q[s][1], q[s][2], q[s][3]);
