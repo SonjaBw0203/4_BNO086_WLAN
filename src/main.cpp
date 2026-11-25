@@ -28,14 +28,17 @@ unsigned long tA[4], tG[4], tQ[4];  // Zeitstempel der letzten Werte je Sensor s
 
 WiFiServer server(5000);  // TCP-Server auf Port 5000 
 WiFiClient client;        // aktuell verbundenen PC-Client 
+char puffer[2048];          // gesammelte Zeilen bis zum naechsten Senden
+int  pn = 0;                // Anzahl Zeichen im Puffer
+unsigned long tSenden = 0;  // Zeitpunkt des letzten Sendens
 
 // aktivieren der drei benötigten Reports eines Sensors
 // Intervall 1000 mikro Sekunden = 100 Hz
 // Delays geben dem Sensor Zeit, jeden Befehl zu verarbeiten.
 template <class B> void reportsAn(B &b) {
   b.enableReport(SH2_LINEAR_ACCELERATION, 10000);  delay(100);
-  b.enableReport(SH2_GYROSCOPE_CALIBRATED, 10000); delay(100);
-  b.enableReport(SH2_GAME_ROTATION_VECTOR, 10000);
+  b.enableReport(SH2_GYROSCOPE_CALIBRATED, 20000); delay(100);
+  b.enableReport(SH2_GAME_ROTATION_VECTOR, 20000);
 }
 
 // Sortieren den empfangenen Datenpakets (w) an die richtige Stelle:
@@ -59,6 +62,15 @@ bool merke(int s) {
       break;
   }
   return false;
+}
+
+//Zeile fuer Sensor s an den Puffer anhaengen (Sensornummer 1-4 vorne)
+void zeile(int s)
+{
+  pn += snprintf(puffer + pn, sizeof(puffer) - pn, 
+                "%d | %lu %.4f %.4f %.4f | %lu %.4f %.4f %.4f | %lu %.4f %.4f %.4f %.4f\n",
+                 s + 1, tA[s], a[s][0], a[s][1], a[s][2], tG[s], g[s][0], g[s][1], g[s][2],
+                 tQ[s], q[s][0], q[s][1], q[s][2], q[s][3]);
 }
 
 void setup() {
@@ -113,24 +125,16 @@ void loop() {
 
 
   // INT = LOW bedeutet, dass ein Sensor neue Daten hat -> diese abholen und merken
-  bool neu = false;
-  while (digitalRead(INT_1) == LOW && bno1.getSensorEvent(&w)) neu |= merke(0);
-  while (digitalRead(INT_2) == LOW && bno2.getSensorEvent(&w)) merke(1);
-  while (digitalRead(INT_3) == LOW && bno3.getSensorEvent(&w)) merke(2);
-  while (digitalRead(INT_4) == LOW && bno4.getSensorEvent(&w)) merke(3);
-  if (!neu) return;
+  // NEU: bei neuer Beschleunigung sofort eine Zeile fuer diesen Sensor schreiben
+  while (digitalRead(INT_1) == LOW && bno1.getSensorEvent(&w)) if (merke(0)) zeile(0);
+  while (digitalRead(INT_2) == LOW && bno2.getSensorEvent(&w)) if (merke(1)) zeile(1);
+  while (digitalRead(INT_3) == LOW && bno3.getSensorEvent(&w)) if (merke(2)) zeile(2);
+  while (digitalRead(INT_4) == LOW && bno4.getSensorEvent(&w)) if (merke(3)) zeile(3);
 
-  // Ausgabenzeile zusammenbauen: für jeden Sensor die jeweils letzten Werten
-  // n zählt die bisher geschriebenen Zeichen 
-  char z[512];  // Ausgabepuffer, 512 Zeichen reichen für 4 Sensoren
-  int n = 0;
-  for (int s = 0; s < 4; s++)
-    n += snprintf(z + n, sizeof(z) - n, "%s%lu %.4f %.4f %.4f | %lu %.4f %.4f %.4f | %lu %.4f %.4f %.4f %.4f",
-                  s ? " | " : "", tA[s], a[s][0], a[s][1], a[s][2], tG[s], g[s][0], g[s][1], g[s][2],
-                  tQ[s], q[s][0], q[s][1], q[s][2], q[s][3]);
-  z[n++] = '\n';  // zeilenende
-
-  // Serial.write(z, n);   // Ausgabe über USB
- 
-    if (client.connected()) client.write(z, n); // Ausgabe über WLAN, falls Client da 
+  // NEU: gesammelte Zeilen alle 10 ms (oder bei fast vollem Puffer) über WLAN senden
+  if (pn > 0 && (millis() - tSenden >= 10 || pn > 1500)) {
+    if (client.connected()) client.write(puffer, pn);
+    pn = 0;
+    tSenden = millis();
+  }
 }
