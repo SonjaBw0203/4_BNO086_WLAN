@@ -31,7 +31,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include "bnoB_prefix.h" 
+#include "bnoC_prefix.h" 
 
 #include "sh2.h"
 #include "sh2_err.h"

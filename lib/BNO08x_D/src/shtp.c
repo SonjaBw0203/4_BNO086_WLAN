@@ -21,7 +21,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include "bnoB_prefix.h" 
+#include "bnoD_prefix.h" 
 
 #include "shtp.h"
 #include "sh2_err.h"

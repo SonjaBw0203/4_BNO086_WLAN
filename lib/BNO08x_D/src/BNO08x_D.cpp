@@ -39,7 +39,7 @@
 #include <Adafruit_I2CDevice.h>
 #include <Adafruit_SPIDevice.h>
 #include <Adafruit_Sensor.h>
-#include "bnoC_prefix.h"
+#include "bnoD_prefix.h"
 
 #include "Arduino.h"
 #include <Wire.h>
