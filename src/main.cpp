@@ -114,10 +114,10 @@ void loop() {
 
   // INT = LOW bedeutet, dass ein Sensor neue Daten hat -> diese abholen und merken
   bool neu = false;
-  if (digitalRead(INT_1) == LOW && bno1.getSensorEvent(&w)) neu = merke(0);
-  if (digitalRead(INT_2) == LOW && bno2.getSensorEvent(&w)) merke(1);
-  if (digitalRead(INT_3) == LOW && bno3.getSensorEvent(&w)) merke(2);
-  if (digitalRead(INT_4) == LOW && bno4.getSensorEvent(&w)) merke(3);
+  while (digitalRead(INT_1) == LOW && bno1.getSensorEvent(&w)) neu |= merke(0);
+  while (digitalRead(INT_2) == LOW && bno2.getSensorEvent(&w)) merke(1);
+  while (digitalRead(INT_3) == LOW && bno3.getSensorEvent(&w)) merke(2);
+  while (digitalRead(INT_4) == LOW && bno4.getSensorEvent(&w)) merke(3);
   if (!neu) return;
 
   // Ausgabenzeile zusammenbauen: für jeden Sensor die jeweils letzten Werten
@@ -130,7 +130,7 @@ void loop() {
                   tQ[s], q[s][0], q[s][1], q[s][2], q[s][3]);
   z[n++] = '\n';  // zeilenende
 
-  Serial.write(z, n);   // Ausgabe über USB
+  // Serial.write(z, n);   // Ausgabe über USB
  
     if (client.connected()) client.write(z, n); // Ausgabe über WLAN, falls Client da 
 }
