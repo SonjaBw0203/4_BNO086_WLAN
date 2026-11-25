@@ -172,7 +172,7 @@ bool BNO08x_D::begin_SPI(uint8_t cs_pin, uint8_t int_pin,
     delete spi_dev; // remove old interface
   }
   spi_dev = new Adafruit_SPIDevice(cs_pin,
-                                   1000000,               // frequency
+                                   3000000,               // frequency
                                    SPI_BITORDER_MSBFIRST, // bit order
                                    SPI_MODE3,             // data mode
                                    theSPI);
