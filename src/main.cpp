@@ -3,8 +3,8 @@
 #include <Arduino.h>
 #include <BNO08x_A.h> // Treiber-Kopie für Sensor 1
 #include <BNO08x_B.h> // Treiber-Kopie für Sensor 2
-#include <BNO08x_C.h> // Treiber-Kopie für Sensor 2
-#include <BNO08x_D.h> // Treiber-Kopie für Sensor 2
+#include <BNO08x_C.h> // Treiber-Kopie für Sensor 3
+#include <BNO08x_D.h> // Treiber-Kopie für Sensor 4
 #include <WiFi.h>
 
 // Pinbelegung: Chip-Select und Interrupt-Leitung je Sensor
@@ -12,9 +12,15 @@
 #define INT_1 1
 #define CS_2 42
 #define INT_2 21
+#define CS_3 4
+#define INT_3 41
+#define CS_4 5
+#define INT_4 39
 
 BNO08x_A bno1(2);   // RST Sensor 1
 BNO08x_B bno2(47);  // RST Sensor 2
+BNO08x_C bno3(40);  // RST Sensor 3
+BNO08x_D bno4(6);  // RST Sensor 4    
 
 sh2_SensorValue_t w;  // Zwischenpuffer für ein empfangenes Sensor-Event 
 float a[2][3], g[2][3], q[2][4]; //a=Beschl., g=Gyro, q=Quaternion, letzte Messwerte je Sensor speichern [Sensor][Achse]
@@ -62,9 +68,11 @@ void setup() {
 
   Serial.begin(921600); // für USB hohe Baudrate, damit 100 Hz Zeilen sicher durchpassen
   
-  // Beide CS-Leitungen inaktiv (HIGH), damit sich die Sensoren beim STart nicht gegenseitig stören
+  // alle CS-Leitungen inaktiv (HIGH), damit sich die Sensoren beim STart nicht gegenseitig stören
   pinMode(CS_1, OUTPUT); digitalWrite(CS_1, HIGH);
   pinMode(CS_2, OUTPUT); digitalWrite(CS_2, HIGH);
+  pinMode(CS_3, OUTPUT); digitalWrite(CS_3, HIGH);
+  pinMode(CS_4, OUTPUT); digitalWrite(CS_4, HIGH);
   delay(2000);
 
   // Beide Sensoren über SPI initialisieren, falls einer nicht gefunden wird, Programm anhalten
