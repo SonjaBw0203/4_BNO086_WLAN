@@ -6,6 +6,8 @@
 #include <BNO08x_C.h> // Treiber-Kopie für Sensor 3
 #include <BNO08x_D.h> // Treiber-Kopie für Sensor 4
 #include <WiFi.h>
+#include "freertos/ringbuf.h" // Ringpuffer zwischen den beiden Kernen (Kern 1 schreibt, Kern 0 liest)
+
 
 // Pinbelegung: Chip-Select und Interrupt-Leitung je Sensor
 #define CS_1 10
@@ -27,10 +29,11 @@ float a[4][3], g[4][3], q[4][4]; //a=Beschl., g=Gyro, q=Quaternion, letzte Messw
 unsigned long tA[4], tG[4], tQ[4];  // Zeitstempel der letzten Werte je Sensor speichern [Sensor]
 
 WiFiServer server(5000);  // TCP-Server auf Port 5000 
-WiFiClient client;        // aktuell verbundenen PC-Client 
-char puffer[2048];          // gesammelte Zeilen bis zum naechsten Senden
-int  pn = 0;                // Anzahl Zeichen im Puffer
-unsigned long tSenden = 0;  // Zeitpunkt des letzten Sendens
+WiFiClient client;        // aktuell verbundenen PC-Client (wird nur von Kern 0 benutzt)
+
+RingbufHandle_t ring;   // Ringpuffer für fertige Zeilen (Kern 1 schreibt, Kern 0 liest)
+volatile unsigned long verloren = 0;  // Anzahl der verlorenen Zeilen, wenn Ringpuffer voll war
+
 
 // aktivieren der drei benötigten Reports eines Sensors
 // Intervall 1000 mikro Sekunden = 100 Hz
@@ -67,10 +70,53 @@ bool merke(int s) {
 //Zeile fuer Sensor s an den Puffer anhaengen (Sensornummer 1-4 vorne)
 void zeile(int s)
 {
-  pn += snprintf(puffer + pn, sizeof(puffer) - pn, 
-                "%d | %lu %.4f %.4f %.4f | %lu %.4f %.4f %.4f | %lu %.4f %.4f %.4f %.4f\n",
-                 s + 1, tA[s], a[s][0], a[s][1], a[s][2], tG[s], g[s][0], g[s][1], g[s][2],
-                 tQ[s], q[s][0], q[s][1], q[s][2], q[s][3]);
+  char z[160];
+  int n = snprintf(z, sizeof(z),
+                  "%d | %lu %.4f %.4f %.4f | %lu %.4f %.4f %.4f | %lu %.4f %.4f %.4f %.4f\n",
+                  s + 1, tA[s], a[s][0], a[s][1], a[s][2], tG[s], g[s][0], g[s][1], g[s][2],
+                  tQ[s], q[s][0], q[s][1], q[s][2], q[s][3]);
+  if(xRingbufferSend(ring, z, n, 0) != pdTRUE) verloren++;  // Puffer voll -> Zeilen zaehlen statt warten
+}
+
+// Sende-Task läuft dauerhaft auf Kern 0
+// nimmt neue Laptops an und schickt alles aus dem Ringpuffer über Wlan
+void sendeTask(void *)
+{
+  unsigned long tAus = 0;
+  while (true)
+  {
+    // neuen Client annehmen, alte Verbindung dabei trennen
+    WiFiClient neuer = server.available();
+    if (neuer)
+    {
+      client.stop();
+      client = neuer;
+      client.setNoDelay(true);
+    }
+
+    // bis zu 1460 Byte aus dem Ringpuffer holen (wartet max 10 ms falls leer)
+    size_t len;
+    char * daten = (char *)xRingbufferReceiveUpTo(ring, &len, pdMS_TO_TICKS(10), 1460);
+    if (daten)
+    {
+      if (client.connected())
+      {
+        client.write(daten, len); 
+      }
+      vRingbufferReturnItem(ring, daten); //Platz im Ringpuffer wieder freigeben
+    }
+
+    // einmal pro Sekunden melden, falls Zeit verloren wurde, weil Ringpuffer voll war
+    if (millis() - tAus >= 1000)
+    {
+      if (verloren > 0)
+      {
+        Serial.printf("Ringpuffer voll, %lu Zeilen verloren\n", verloren);
+        verloren = 0;
+      }
+      tAus = millis();
+    }
+  }
 }
 
 void setup() {
@@ -80,6 +126,8 @@ void setup() {
 
   Serial.begin(921600); // für USB hohe Baudrate, damit 100 Hz Zeilen sicher durchpassen
   
+  ring = xRingbufferCreate(16384, RINGBUF_TYPE_BYTEBUF);  // 16 kBRingpuffer anlegen (Kern 1 schreibt, Kern 0 liest )
+
   // alle CS-Leitungen inaktiv (HIGH), damit sich die Sensoren beim STart nicht gegenseitig stören
   pinMode(CS_1, OUTPUT); digitalWrite(CS_1, HIGH);
   pinMode(CS_2, OUTPUT); digitalWrite(CS_2, HIGH);
@@ -109,14 +157,12 @@ void setup() {
     }
 
     reportsAn(bno1); reportsAn(bno2); reportsAn(bno3); reportsAn(bno4);
+
+    // Sende-Task auf Kern 0 starten (Funktion, Name, Stackgroesse, Parameter, Prioritaet, Handle, Kern)
+    xTaskCreatePinnedToCore(sendeTask, "senden", 4096, NULL, 1, NULL, 0);
   }
 
 void loop() {
-  // neuen Client annehmen, falls noch keiner verbunden ist
-  if (!client.connected()) 
-  { client = server.available(); 
-  if (client) client.setNoDelay(true); }
-
   // Nach einem Sensor Reset sind alle Reports aus -> neu aktivieren 
   if (bno1.wasReset()) reportsAn(bno1);
   if (bno2.wasReset()) reportsAn(bno2);
@@ -131,10 +177,4 @@ void loop() {
   while (digitalRead(INT_3) == LOW && bno3.getSensorEvent(&w)) if (merke(2)) zeile(2);
   while (digitalRead(INT_4) == LOW && bno4.getSensorEvent(&w)) if (merke(3)) zeile(3);
 
-  // NEU: gesammelte Zeilen alle 10 ms (oder bei fast vollem Puffer) über WLAN senden
-  if (pn > 0 && (millis() - tSenden >= 10 || pn > 1500)) {
-    if (client.connected()) client.write(puffer, pn);
-    pn = 0;
-    tSenden = millis();
-  }
 }
