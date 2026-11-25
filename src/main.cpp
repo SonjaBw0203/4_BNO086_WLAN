@@ -34,6 +34,12 @@ WiFiClient client;        // aktuell verbundenen PC-Client (wird nur von Kern 0 
 RingbufHandle_t ring;   // Ringpuffer für fertige Zeilen (Kern 1 schreibt, Kern 0 liest)
 volatile unsigned long verloren = 0;  // Anzahl der verlorenen Zeilen, wenn Ringpuffer voll war
 
+// Rohwerte eines Sensors zu einem Zeitpunkt (Kern 1 legt sie ab, Kern 0 macht Text daraus)
+struct Messung {
+  uint8_t s;                         // Sensor 0-3
+  uint32_t tA, tG, tQ;               // Zeitstempel
+  float a[3], g[3], q[4];            // Beschleunigung, Drehrate, Quaternion
+};
 
 // aktivieren der drei benötigten Reports eines Sensors
 // Intervall 1000 mikro Sekunden = 100 Hz
@@ -67,22 +73,25 @@ bool merke(int s) {
   return false;
 }
 
-//Zeile fuer Sensor s an den Puffer anhaengen (Sensornummer 1-4 vorne)
+// Rohwerte von Sensor s in den Ringpuffer legen (wartet nie)
+// Umwandlung in Text passiert erst auf Kern 0
 void zeile(int s)
 {
-  char z[160];
-  int n = snprintf(z, sizeof(z),
-                  "%d | %lu %.4f %.4f %.4f | %lu %.4f %.4f %.4f | %lu %.4f %.4f %.4f %.4f\n",
-                  s + 1, tA[s], a[s][0], a[s][1], a[s][2], tG[s], g[s][0], g[s][1], g[s][2],
-                  tQ[s], q[s][0], q[s][1], q[s][2], q[s][3]);
-  if(xRingbufferSend(ring, z, n, 0) != pdTRUE) verloren++;  // Puffer voll -> Zeilen zaehlen statt warten
+  Messung m;
+  m.s = s; m.tA = tA[s]; m.tG = tG[s]; m.tQ = tQ[s];
+  memcpy(m.a, a[s], sizeof(m.a));
+  memcpy(m.g, g[s], sizeof(m.g));
+  memcpy(m.q, q[s], sizeof(m.q));
+  if (xRingbufferSend(ring, &m, sizeof(m), 0) != pdTRUE) verloren++;  // Puffer voll -> zaehlen statt warten
 }
 
 // Sende-Task läuft dauerhaft auf Kern 0
-// nimmt neue Laptops an und schickt alles aus dem Ringpuffer über Wlan
+// holt Rohwerte aus dem Ringpuffer, macht daraus Textzeilen und schickt sie über WLAN
 void sendeTask(void *)
 {
-  unsigned long tAus = 0;
+  static char puffer[1500]; // 1500 Byte Puffer für eine Zeile
+  int pn = 0; // aktuelle Position im Puffer (Anzahl Zeichen im Puffer)
+  unsigned long tSenden = 0, tAus = 0;
   while (true)
   {
     // neuen Client annehmen, alte Verbindung dabei trennen
@@ -96,14 +105,24 @@ void sendeTask(void *)
 
     // bis zu 1460 Byte aus dem Ringpuffer holen (wartet max 10 ms falls leer)
     size_t len;
-    char * daten = (char *)xRingbufferReceiveUpTo(ring, &len, pdMS_TO_TICKS(10), 1460);
-    if (daten)
+    Messung *m = (Messung *)xRingbufferReceive(ring, &len, pdMS_TO_TICKS(10));
+    if (m)
     {
-      if (client.connected())
-      {
-        client.write(daten, len); 
-      }
-      vRingbufferReturnItem(ring, daten); //Platz im Ringpuffer wieder freigeben
+      // Rohwerte in Textzeile umwandeln
+      pn += snprintf(puffer + pn, sizeof(puffer) - pn,
+                     "%d | %lu %.4f %.4f %.4f | %lu %.4f %.4f %.4f | %lu %.4f %.4f %.4f %.4f\n",
+                     m->s + 1, (unsigned long)m->tA, m->a[0], m->a[1], m->a[2],
+                     (unsigned long)m->tG, m->g[0], m->g[1], m->g[2],
+                     (unsigned long)m->tQ, m->q[0], m->q[1], m->q[2], m->q[3]);
+      vRingbufferReturnItem(ring, m); //Platz im Ringpuffer wieder freigeben
+    }
+
+    // gesammelte Zeilen senden: alle 10 ms oder wenn der Puffer fast voll ist
+    if (pn > 0 && (pn > 1300 || millis() - tSenden >= 10))
+    {
+      if (client.connected()) client.write((uint8_t *)puffer, pn);
+      pn = 0;
+      tSenden = millis();
     }
 
     // einmal pro Sekunden melden, falls Zeit verloren wurde, weil Ringpuffer voll war
@@ -126,7 +145,7 @@ void setup() {
 
   Serial.begin(921600); // für USB hohe Baudrate, damit 100 Hz Zeilen sicher durchpassen
   
-  ring = xRingbufferCreate(16384, RINGBUF_TYPE_BYTEBUF);  // 16 kBRingpuffer anlegen (Kern 1 schreibt, Kern 0 liest )
+  ring = xRingbufferCreate(16384, RINGBUF_TYPE_NOSPLIT);  // 16 kBRingpuffer anlegen (Kern 1 schreibt, Kern 0 liest )
 
   // alle CS-Leitungen inaktiv (HIGH), damit sich die Sensoren beim STart nicht gegenseitig stören
   pinMode(CS_1, OUTPUT); digitalWrite(CS_1, HIGH);
