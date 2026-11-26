@@ -202,6 +202,7 @@ void loop() {
   if (bno1.wasReset()) 
   {
     reportsAn(bno1);
+    delay(100);
     bnoA_sh2_setCalConfig(KALI);
 
     //TEST:
@@ -211,16 +212,19 @@ void loop() {
   if (bno2.wasReset()) 
   {
     reportsAn(bno2);
+    delay(100);
     bnoB_sh2_setCalConfig(KALI);
   }
   if (bno3.wasReset()) 
   {
     reportsAn(bno3);
+    delay(100);
     bnoC_sh2_setCalConfig(KALI);
   }
   if (bno4.wasReset()) 
   {
     reportsAn(bno4);
+    delay(100);
     bnoD_sh2_setCalConfig(KALI);
   }
 
