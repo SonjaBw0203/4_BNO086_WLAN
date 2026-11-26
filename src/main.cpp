@@ -8,6 +8,17 @@
 #include <WiFi.h>
 #include "freertos/ringbuf.h" // Ringpuffer zwischen den beiden Kernen (Kern 1 schreibt, Kern 0 liest)
 
+// sh2-Funktionen der vier Treiber-Kopien bekannt machen (Kalibrierung)
+extern "C" {
+  int bnoA_sh2_setCalConfig(uint8_t sensors); int bnoA_sh2_clearDcdAndReset(void); // Sensor 1
+  int bnoB_sh2_setCalConfig(uint8_t sensors); int bnoB_sh2_clearDcdAndReset(void); // Sensor 2
+  int bnoC_sh2_setCalConfig(uint8_t sensors); int bnoC_sh2_clearDcdAndReset(void); // Sensor 3
+  int bnoD_sh2_setCalConfig(uint8_t sensors); int bnoD_sh2_clearDcdAndReset(void); // Sensor 4
+}
+
+// Dynamische Eigenkalibrierung der Sensoren aktiv oder inaktiv schalten
+// const uint8_t KALI = 0; // inaktiv
+const uint8_t KALI = (SH2_CAL_ACCEL | SH2_CAL_GYRO | SH2_CAL_MAG); // aktiv
 
 // Pinbelegung: Chip-Select und Interrupt-Leitung je Sensor
 #define CS_1 10
@@ -177,16 +188,35 @@ void setup() {
 
     reportsAn(bno1); reportsAn(bno2); reportsAn(bno3); reportsAn(bno4);
 
+    bnoA_sh2_clearDcdAndReset(); bnoB_sh2_clearDcdAndReset(); bnoC_sh2_clearDcdAndReset(); bnoD_sh2_clearDcdAndReset(); // gelernte Offsets löschen
+
     // Sende-Task auf Kern 0 starten (Funktion, Name, Stackgroesse, Parameter, Prioritaet, Handle, Kern)
     xTaskCreatePinnedToCore(sendeTask, "senden", 4096, NULL, 1, NULL, 0);
   }
 
 void loop() {
   // Nach einem Sensor Reset sind alle Reports aus -> neu aktivieren 
-  if (bno1.wasReset()) reportsAn(bno1);
-  if (bno2.wasReset()) reportsAn(bno2);
-  if (bno3.wasReset()) reportsAn(bno3);
-  if (bno4.wasReset()) reportsAn(bno4);
+  if (bno1.wasReset()) 
+  {
+    reportsAn(bno1);
+    bnoA_sh2_setCalConfig(KALI);
+  }
+
+  if (bno2.wasReset()) 
+  {
+    reportsAn(bno2);
+    bnoB_sh2_setCalConfig(KALI);
+  }
+  if (bno3.wasReset()) 
+  {
+    reportsAn(bno3);
+    bnoC_sh2_setCalConfig(KALI);
+  }
+  if (bno4.wasReset()) 
+  {
+    reportsAn(bno4);
+    bnoD_sh2_setCalConfig(KALI);
+  }
 
 
   // INT = LOW bedeutet, dass ein Sensor neue Daten hat -> diese abholen und merken
