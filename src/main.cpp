@@ -14,6 +14,9 @@ extern "C" {
   int bnoB_sh2_setCalConfig(uint8_t sensors); int bnoB_sh2_clearDcdAndReset(void); // Sensor 2
   int bnoC_sh2_setCalConfig(uint8_t sensors); int bnoC_sh2_clearDcdAndReset(void); // Sensor 3
   int bnoD_sh2_setCalConfig(uint8_t sensors); int bnoD_sh2_clearDcdAndReset(void); // Sensor 4
+
+  //TEST:
+    int bnoA_sh2_getCalConfig(uint8_t *pSensors);  // Kalibrier-Einstellung von Sensor 1 auslesen
 }
 
 // Dynamische Eigenkalibrierung der Sensoren aktiv oder inaktiv schalten
@@ -200,6 +203,9 @@ void loop() {
   {
     reportsAn(bno1);
     bnoA_sh2_setCalConfig(KALI);
+
+    //TEST:
+    uint8_t c; bnoA_sh2_getCalConfig(&c); Serial.printf("Kali S1: %u\n", c); // Kontrolle
   }
 
   if (bno2.wasReset()) 
